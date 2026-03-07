@@ -12,6 +12,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from threading import Lock
+from typing import Awaitable, cast
 
 import redis as redis_lib
 import redis.asyncio as aioredis
@@ -23,6 +24,27 @@ logger = get_logger(__name__)
 
 # Run a full sweep of all keys every 128 calls to is_allowed.
 _CLEANUP_INTERVAL = 128
+
+# Redis sliding-window script that bounds per-key storage to
+# ``max_requests`` while preserving the current "blocked attempts extend
+# the window" behavior by retaining the most recent attempts.
+_REDIS_IS_ALLOWED_SCRIPT = """
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", ARGV[1])
+local count = redis.call("ZCARD", KEYS[1])
+if count < tonumber(ARGV[4]) then
+  redis.call("ZADD", KEYS[1], ARGV[2], ARGV[3])
+  redis.call("EXPIRE", KEYS[1], ARGV[5])
+  return 1
+end
+
+local oldest = redis.call("ZRANGE", KEYS[1], 0, 0)
+if oldest[1] then
+  redis.call("ZREM", KEYS[1], oldest[1])
+end
+redis.call("ZADD", KEYS[1], ARGV[2], ARGV[3])
+redis.call("EXPIRE", KEYS[1], ARGV[5])
+return 0
+"""
 
 # Shared async Redis clients keyed by URL to avoid duplicate connection pools.
 _async_redis_clients: dict[str, aioredis.Redis] = {}
@@ -81,17 +103,25 @@ class InMemoryRateLimiter(RateLimiter):
             # Prune expired entries from the front (timestamps are monotonic)
             while timestamps and timestamps[0] <= cutoff:
                 timestamps.popleft()
+            if len(timestamps) < self._max_requests:
+                timestamps.append(now)
+                return True
+
+            # Retain only the latest ``max_requests`` attempts so
+            # sustained abuse keeps extending the window without letting
+            # the bucket grow unbounded.
+            timestamps.popleft()
             timestamps.append(now)
-            return len(timestamps) <= self._max_requests
+            return False
 
 
 class RedisRateLimiter(RateLimiter):
     """Redis-backed sliding-window rate limiter using sorted sets.
 
     Each key is stored as a Redis sorted set where members are unique
-    request identifiers and scores are wall-clock timestamps.  An async
-    pipeline prunes expired entries, adds the new request, counts the
-    window, and sets a TTL — all in a single round-trip.
+    request identifiers and scores are wall-clock timestamps. A Lua
+    script prunes expired entries, updates the set, and keeps storage
+    bounded to the most recent ``max_requests`` attempts.
 
     Fail-open: if Redis is unreachable during a request, the request is
     allowed and a warning is logged.
@@ -118,13 +148,19 @@ class RedisRateLimiter(RateLimiter):
         member = f"{now}:{uuid.uuid4().hex[:8]}"
 
         try:
-            pipe = self._client.pipeline(transaction=True)
-            pipe.zremrangebyscore(redis_key, "-inf", cutoff)
-            pipe.zadd(redis_key, {member: now})
-            pipe.zcard(redis_key)
-            pipe.expire(redis_key, int(self._window_seconds) + 1)
-            results = await pipe.execute()
-            count: int = results[2]
+            allowed = await cast(
+                Awaitable[object],
+                self._client.eval(
+                    _REDIS_IS_ALLOWED_SCRIPT,
+                    1,
+                    redis_key,
+                    str(cutoff),
+                    str(now),
+                    member,
+                    str(self._max_requests),
+                    str(int(self._window_seconds) + 1),
+                ),
+            )
         except Exception:
             logger.warning(
                 "rate_limit.redis.unavailable namespace=%s key=%s",
@@ -134,7 +170,7 @@ class RedisRateLimiter(RateLimiter):
             )
             return True  # fail-open
 
-        return count <= self._max_requests
+        return bool(allowed)
 
 
 def _redact_url(url: str) -> str:
