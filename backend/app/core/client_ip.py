@@ -35,7 +35,7 @@ def _parse_trusted_networks(raw: str) -> list[IPv4Network | IPv6Network]:
         try:
             networks.append(ipaddress.ip_network(entry, strict=False))
         except ValueError:
-            logger.warning("trusted_proxies: ignoring invalid entry %r", entry)
+            logger.warning("trusted_proxies: ignoring invalid entry in configuration")
     return networks
 
 

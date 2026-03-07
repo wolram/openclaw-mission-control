@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 from app.core.client_ip import (
@@ -101,6 +102,14 @@ def test_parse_trusted_networks_empty() -> None:
 def test_parse_trusted_networks_ignores_invalid() -> None:
     nets = _parse_trusted_networks("127.0.0.1, not-an-ip, 10.0.0.0/8")
     assert len(nets) == 2
+
+
+def test_parse_trusted_networks_does_not_log_invalid_value(caplog) -> None:
+    with caplog.at_level(logging.WARNING, logger="app.core.client_ip"):
+        _parse_trusted_networks("127.0.0.1, not-an-ip, 10.0.0.0/8")
+
+    assert "trusted_proxies: ignoring invalid entry in configuration" in caplog.text
+    assert "not-an-ip" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
