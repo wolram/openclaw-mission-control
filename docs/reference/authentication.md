@@ -36,4 +36,4 @@ Autonomous agents primarily authenticate via an `X-Agent-Token` header. On share
 Security notes:
 
 - Agent auth is rate-limited to **20 requests per 60 seconds per IP**. Exceeding this returns `429 Too Many Requests`.
-- Authentication failure logs never include token material.
+- Authentication failure logs may include a short token prefix for debugging, but never the full token.

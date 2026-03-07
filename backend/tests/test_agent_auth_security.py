@@ -87,7 +87,7 @@ async def test_require_user_or_agent_skips_agent_auth_when_user_auth_succeeds(
 
 
 @pytest.mark.asyncio
-async def test_required_agent_auth_invalid_token_logs_no_token_material(
+async def test_required_agent_auth_invalid_token_logs_short_prefix_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     limiter = _RecordingLimiter()
@@ -118,11 +118,16 @@ async def test_required_agent_auth_invalid_token_logs_no_token_material(
         )
 
     assert exc_info.value.status_code == 401
-    assert logged == [("agent auth invalid token path=%s", ("/api/v1/agent/boards",))]
+    assert logged == [
+        (
+            "agent auth invalid token path=%s token_prefix=%s",
+            ("/api/v1/agent/boards", "invali"),
+        )
+    ]
 
 
 @pytest.mark.asyncio
-async def test_optional_agent_auth_invalid_token_logs_no_token_material(
+async def test_optional_agent_auth_invalid_token_logs_short_prefix_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     limiter = _RecordingLimiter()
@@ -152,4 +157,9 @@ async def test_optional_agent_auth_invalid_token_logs_no_token_material(
     )
 
     assert ctx is None
-    assert logged == [("agent auth optional invalid token path=%s", ("/api/v1/tasks/task-2",))]
+    assert logged == [
+        (
+            "agent auth optional invalid token path=%s token_prefix=%s",
+            ("/api/v1/tasks/task-2", "invali"),
+        )
+    ]

@@ -72,7 +72,7 @@ This boundary helps LLM-based agents distinguish trusted instructions from untru
 
 ## Agent token logging
 
-On authentication failure, logs include request context only. Token values and token prefixes are not written to logs.
+On authentication failure, logs include request context and may include a short token prefix for debugging. Full tokens are not written to logs.
 
 ## Cross-tenant isolation
 
