@@ -15,6 +15,7 @@ from app.core.rate_limit import (
 )
 from app.core.rate_limit_backend import RateLimitBackend
 
+
 class _FakeRedis:
     """Minimal in-process Redis fake supporting the limiter Lua script."""
 
