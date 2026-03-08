@@ -116,7 +116,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       {/* Mobile sidebar overlay */}
       {sidebarOpen ? (
         <div
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-0 z-40 bg-black/30 md:hidden"
           onClick={toggleSidebar}
           onKeyDown={(e) => e.key === "Escape" && toggleSidebar()}
           role="button"
