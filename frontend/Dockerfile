@@ -33,7 +33,8 @@ ENV NEXT_PUBLIC_AUTH_MODE=${NEXT_PUBLIC_AUTH_MODE}
 
 # Create non-root user before COPY so --chown can reference it.
 # Using COPY --chown avoids a slow recursive chown on overlay2 (docker/for-linux#388).
-RUN addgroup -S appgroup && adduser -S -G appgroup appuser
+RUN addgroup -S appgroup && adduser -S -G appgroup appuser \
+  && chown appuser:appgroup /app
 
 COPY --from=builder --chown=appuser:appgroup /app/.next ./.next
 # `public/` is optional in Next.js apps; repo may not have it.
