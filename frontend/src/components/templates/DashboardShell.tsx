@@ -23,9 +23,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const { isSignedIn } = useAuth();
   const isOnboardingPath = pathname === "/onboarding";
   const [sidebarState, setSidebarState] = useState({ open: false, path: pathname });
-  // Sidebar auto-closes on navigation: when pathname changes, the derived
-  // value becomes false without any setState or ref access during render.
-  const sidebarOpen = sidebarState.path === pathname && sidebarState.open;
+  // Close sidebar on navigation using React's "store info from previous
+  // renders" pattern — conditional setState during render resets immediately
+  // without extra commits, avoiding both set-state-in-effect and refs rules.
+  if (sidebarState.path !== pathname) {
+    setSidebarState({ open: false, path: pathname });
+  }
+  const sidebarOpen = sidebarState.open;
 
   const meQuery = useGetMeApiV1UsersMeGet<
     getMeApiV1UsersMeGetResponse,
