@@ -79,19 +79,31 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
+  // Dismiss sidebar on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sidebarOpen]);
+
   return (
     <div className="min-h-screen bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
         <div className="flex items-center py-3">
           <div className="flex items-center px-4 md:px-6 md:w-[260px]">
-            <button
-              type="button"
-              className="mr-3 rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
-              onClick={toggleSidebar}
-              aria-label="Toggle navigation"
-            >
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
+            {isSignedIn ? (
+              <button
+                type="button"
+                className="mr-3 rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+                onClick={toggleSidebar}
+                aria-label="Toggle navigation"
+              >
+                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            ) : null}
             <BrandMark />
           </div>
           <SignedIn>
@@ -120,10 +132,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <div
           className="fixed inset-0 z-40 bg-black/30 md:hidden"
           onClick={toggleSidebar}
-          onKeyDown={(e) => e.key === "Escape" && toggleSidebar()}
-          role="button"
-          tabIndex={-1}
-          aria-label="Close navigation"
+          aria-hidden="true"
         />
       ) : null}
 
