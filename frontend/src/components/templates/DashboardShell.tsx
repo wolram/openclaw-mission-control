@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -22,7 +22,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
   const isOnboardingPath = pathname === "/onboarding";
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarState, setSidebarState] = useState({ open: false, path: pathname });
+  // Sidebar auto-closes on navigation: when pathname changes, the derived
+  // value becomes false without any setState or ref access during render.
+  const sidebarOpen = sidebarState.path === pathname && sidebarState.open;
 
   const meQuery = useGetMeApiV1UsersMeGet<
     getMeApiV1UsersMeGetResponse,
@@ -37,13 +40,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const profile = meQuery.data?.status === 200 ? meQuery.data.data : null;
   const displayName = profile?.name ?? profile?.preferred_name ?? "Operator";
   const displayEmail = profile?.email ?? "";
-
-  // Close sidebar on navigation
-  const prevPathname = useRef(pathname);
-  if (prevPathname.current !== pathname) {
-    prevPathname.current = pathname;
-    if (sidebarOpen) setSidebarOpen(false);
-  }
 
   useEffect(() => {
     if (!isSignedIn || isOnboardingPath) return;
@@ -77,13 +73,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
+  const toggleSidebar = useCallback(
+    () => setSidebarState((prev) => ({ open: !prev.open, path: pathname })),
+    [pathname],
+  );
 
   // Dismiss sidebar on Escape
   useEffect(() => {
     if (!sidebarOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+      if (e.key === "Escape") setSidebarState((prev) => ({ ...prev, open: false }));
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
