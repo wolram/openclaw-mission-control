@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -39,9 +39,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const displayEmail = profile?.email ?? "";
 
   // Close sidebar on navigation
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
+  const prevPathname = useRef(pathname);
+  if (prevPathname.current !== pathname) {
+    prevPathname.current = pathname;
+    if (sidebarOpen) setSidebarOpen(false);
+  }
 
   useEffect(() => {
     if (!isSignedIn || isOnboardingPath) return;
