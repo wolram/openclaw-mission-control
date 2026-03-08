@@ -102,7 +102,7 @@ describe("/dashboard - mobile sidebar", () => {
 
     cy.get("[data-sidebar]").should("have.attr", "data-sidebar", "open");
     cy.get("aside").should("be.visible");
-    cy.get('[aria-hidden="true"]').should("exist");
+    cy.get('[data-cy="sidebar-backdrop"]').should("exist");
   });
 
   it("mobile: click backdrop closes sidebar", () => {
@@ -114,7 +114,7 @@ describe("/dashboard - mobile sidebar", () => {
     cy.get("[data-sidebar]").should("have.attr", "data-sidebar", "open");
 
     // Click the backdrop overlay
-    cy.get('[aria-hidden="true"]').click({ force: true });
+    cy.get('[data-cy="sidebar-backdrop"]').click({ force: true });
 
     cy.get("[data-sidebar]").should("have.attr", "data-sidebar", "closed");
     cy.get("aside").should("not.be.visible");
