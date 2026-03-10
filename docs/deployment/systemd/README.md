@@ -14,7 +14,7 @@ If you use Docker only for Postgres and/or Redis, start those first (e.g. `docke
 
 Before installing, replace in each unit file:
 
-- `REPO_ROOT` — absolute path to the Mission Control repo (e.g. `/home/user/openclaw-mission-control`).
+- `REPO_ROOT` — absolute path to the Mission Control repo (e.g. `/home/user/openclaw-mission-control`). Must not contain spaces (systemd unit values do not support shell-style quoting).
 - `BACKEND_PORT` — backend port (default `8000`).
 - `FRONTEND_PORT` — frontend port (default `3000`).
 
@@ -24,10 +24,12 @@ Example (from repo root):
 REPO_ROOT="$(pwd)"
 for f in docs/deployment/systemd/openclaw-mission-control-*.service; do
   sed -e "s|REPO_ROOT|$REPO_ROOT|g" -e "s|BACKEND_PORT|8000|g" -e "s|FRONTEND_PORT|3000|g" "$f" \
-    -o "$(basename "$f")"
+    > "$(basename "$f")"
 done
 # Then copy the generated .service files to ~/.config/systemd/user/ or /etc/systemd/system/
 ```
+
+**User units** start at **user login** by default. To have services start at **machine boot** without logging in, enable lingering for your user: `loginctl enable-linger $USER`. Alternatively, use system-wide units in `/etc/systemd/system/` (see below).
 
 ## Install and enable
 

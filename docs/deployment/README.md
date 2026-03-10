@@ -131,7 +131,7 @@ The RQ queue worker is required for gateway lifecycle (wake/check-in) and webhoo
 
 ### macOS (launchd)
 
-Use LaunchAgents so the backend, frontend, and worker run under your user and restart on failure.
+LaunchAgents run at **user login**, not at machine boot. Use LaunchAgents so the backend, frontend, and worker run under your user and restart on failure. For true boot-time startup you would need LaunchDaemons or other configuration (not covered here).
 
 1. Create a plist for each process under `~/Library/LaunchAgents/`, e.g. `com.openclaw.mission-control.backend.plist`:
 
