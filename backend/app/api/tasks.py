@@ -2164,7 +2164,16 @@ async def _lead_apply_status(
     lead_agent = update.actor.agent
     if "status" not in update.updates:
         return
+    target_status = _required_status_value(update.updates["status"])
+    # Leads may set `in_progress` when simultaneously assigning an agent to an
+    # inbox task (assignment-and-start shortcut).
     if update.task.status != "review":
+        assigning_agent = "assigned_agent_id" in update.updates and bool(
+            _optional_assigned_agent_id(update.updates["assigned_agent_id"])
+        )
+        if update.task.status == "inbox" and target_status == "in_progress" and assigning_agent:
+            update.task.status = target_status
+            return
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -2172,7 +2181,6 @@ async def _lead_apply_status(
                 f"task status is `review` (current: `{update.task.status}`)."
             ),
         )
-    target_status = _required_status_value(update.updates["status"])
     if target_status not in {"done", "inbox"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
