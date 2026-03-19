@@ -678,9 +678,7 @@ async def _wake_agent_online_for_task(
         record_activity(
             session,
             event_type="task.assignee_woken",
-            message=(
-                f"Assignee heartbeat set online ({reason}): {agent.name}."
-            ),
+            message=(f"Assignee heartbeat set online ({reason}): {agent.name}."),
             agent_id=agent.id,
             task_id=task.id,
             board_id=board.id,
@@ -689,9 +687,7 @@ async def _wake_agent_online_for_task(
         record_activity(
             session,
             event_type="task.assignee_wake_failed",
-            message=(
-                f"Assignee wake failed ({reason}): {agent.name}. Error: {exc!s}"
-            ),
+            message=(f"Assignee wake failed ({reason}): {agent.name}. Error: {exc!s}"),
             agent_id=agent.id,
             task_id=task.id,
             board_id=board.id,
