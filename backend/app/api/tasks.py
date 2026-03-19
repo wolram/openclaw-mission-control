@@ -60,6 +60,7 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.provisioning_db import AgentLifecycleService
 from app.services.organizations import require_board_access
 from app.services.tags import (
     TagState,
@@ -661,6 +662,43 @@ async def _latest_task_comment_by_agent(
     return (await session.exec(statement)).first()
 
 
+async def _wake_agent_online_for_task(
+    *,
+    session: AsyncSession,
+    board: Board,
+    task: Task,
+    agent: Agent,
+    reason: str,
+) -> None:
+    if not agent.openclaw_session_id:
+        return
+    service = AgentLifecycleService(session)
+    try:
+        await service.commit_heartbeat(agent=agent, status_value="online")
+        record_activity(
+            session,
+            event_type="task.assignee_woken",
+            message=(
+                f"Assignee heartbeat set online ({reason}): {agent.name}."
+            ),
+            agent_id=agent.id,
+            task_id=task.id,
+            board_id=board.id,
+        )
+    except Exception as exc:  # pragma: no cover - best effort wake path
+        record_activity(
+            session,
+            event_type="task.assignee_wake_failed",
+            message=(
+                f"Assignee wake failed ({reason}): {agent.name}. Error: {exc!s}"
+            ),
+            agent_id=agent.id,
+            task_id=task.id,
+            board_id=board.id,
+        )
+    await session.commit()
+
+
 async def _notify_agent_on_task_assign(
     *,
     session: AsyncSession,
@@ -670,6 +708,13 @@ async def _notify_agent_on_task_assign(
 ) -> None:
     if not agent.openclaw_session_id:
         return
+    await _wake_agent_online_for_task(
+        session=session,
+        board=board,
+        task=task,
+        agent=agent,
+        reason="assignment",
+    )
     dispatch = GatewayDispatchService(session)
     config = await dispatch.optional_gateway_config_for_board(board)
     if config is None:
@@ -2521,16 +2566,17 @@ async def _notify_task_update_assignment_changes(
     *,
     update: _TaskUpdateInput,
 ) -> None:
+    board = (
+        await Board.objects.by_id(update.task.board_id).first(session)
+        if update.task.board_id
+        else None
+    )
+
     if (
         update.task.status == "inbox"
         and update.task.assigned_agent_id is None
         and (update.previous_status != "inbox" or update.previous_assigned is not None)
     ):
-        board = (
-            await Board.objects.by_id(update.task.board_id).first(session)
-            if update.task.board_id
-            else None
-        )
         if board:
             await _notify_lead_on_task_unassigned(
                 session=session,
@@ -2538,21 +2584,31 @@ async def _notify_task_update_assignment_changes(
                 task=update.task,
             )
 
-    if (
-        not update.task.assigned_agent_id
-        or update.task.assigned_agent_id == update.previous_assigned
-    ):
+    if not update.task.assigned_agent_id:
         return
+
     assigned_agent = await Agent.objects.by_id(update.task.assigned_agent_id).first(
         session,
     )
     if assigned_agent is None:
         return
-    board = (
-        await Board.objects.by_id(update.task.board_id).first(session)
-        if update.task.board_id
-        else None
-    )
+
+    if (
+        board
+        and update.task.status == "in_progress"
+        and update.previous_status != "in_progress"
+    ):
+        await _wake_agent_online_for_task(
+            session=session,
+            board=board,
+            task=update.task,
+            agent=assigned_agent,
+            reason="status_in_progress",
+        )
+
+    if update.task.assigned_agent_id == update.previous_assigned:
+        return
+
     if (
         update.previous_status == "review"
         and update.task.status == "inbox"
@@ -2569,12 +2625,14 @@ async def _notify_task_update_assignment_changes(
                 lead=update.actor.agent,
             )
         return
+
     if (
         update.actor.actor_type == "agent"
         and update.actor.agent
         and update.task.assigned_agent_id == update.actor.agent.id
     ):
         return
+
     if board:
         await _notify_agent_on_task_assign(
             session=session,
