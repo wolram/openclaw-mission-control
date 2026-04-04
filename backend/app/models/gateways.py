@@ -12,6 +12,9 @@ from app.models.base import QueryModel
 
 RUNTIME_ANNOTATION_TYPES = (datetime,)
 
+GATEWAY_TYPE_OPENCLAW = "openclaw"
+GATEWAY_TYPE_UIPATH = "uipath"
+
 
 class Gateway(QueryModel, table=True):
     """Configured external gateway endpoint and authentication settings."""
@@ -28,3 +31,13 @@ class Gateway(QueryModel, table=True):
     allow_insecure_tls: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+    # Integration type: "openclaw" (default) or "uipath"
+    gateway_type: str = Field(default=GATEWAY_TYPE_OPENCLAW)
+    # UiPath-specific fields — only populated when gateway_type == "uipath"
+    uipath_org_name: str | None = Field(default=None)
+    uipath_tenant_name: str | None = Field(default=None)
+    uipath_client_id: str | None = Field(default=None)
+    uipath_client_secret: str | None = Field(default=None)
+    uipath_folder_name: str | None = Field(default=None)
+    uipath_process_key: str | None = Field(default=None)
+    uipath_webhook_secret: str | None = Field(default=None)

@@ -2,6 +2,11 @@
 
 Runbooks and operational notes for running Mission Control.
 
+Additional runbooks:
+
+- [Hostinger deploy agent](./hostinger-deploy-agent.md)
+- [Hostinger shared hosting recovery](./hostinger-shared-hosting-recovery.md)
+
 ## Health checks
 
 Backend exposes:

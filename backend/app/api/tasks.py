@@ -68,6 +68,7 @@ from app.services.tags import (
     replace_tags,
     validate_tag_ids,
 )
+from app.services.uipath.sync_service import push_task_to_uipath
 from app.services.task_dependencies import (
     blocked_by_dependency_ids,
     dependency_ids_by_task_id,
@@ -108,6 +109,26 @@ BOARD_WRITE_DEP = Depends(get_board_for_user_write)
 SESSION_DEP = Depends(get_session)
 USER_AUTH_DEP = Depends(require_user_auth)
 TASK_DEP = Depends(get_task_or_404)
+
+
+async def _fire_uipath_sync(
+    session: AsyncSession,
+    *,
+    board_id: UUID,
+    task: Task,
+) -> None:
+    """Fire-and-forget: push a task to UiPath if the board uses a UiPath gateway."""
+    from app.models.gateways import GATEWAY_TYPE_UIPATH, Gateway
+
+    board: Board | None = await Board.objects.by_id(board_id).first(session)
+    if board is None or board.gateway_id is None:
+        return
+    gateway: Gateway | None = await Gateway.objects.by_id(board.gateway_id).first(session)
+    if gateway is None or gateway.gateway_type != GATEWAY_TYPE_UIPATH:
+        return
+    asyncio.create_task(
+        push_task_to_uipath(gateway, task_id=str(task.id), task_title=task.title)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1572,6 +1593,7 @@ async def create_task(
                 task=task,
                 agent=assigned_agent,
             )
+    await _fire_uipath_sync(session, board_id=board.id, task=task)
     return await _task_read_response(
         session,
         task=task,
@@ -1636,16 +1658,19 @@ async def update_task(
         custom_field_values_set=custom_field_values_set,
     )
     if actor.actor_type == "agent" and actor.agent and actor.agent.is_board_lead:
-        return await _apply_lead_task_update(session, update=update)
+        result = await _apply_lead_task_update(session, update=update)
+        if update.status_requested:
+            await _fire_uipath_sync(session, board_id=board_id, task=task)
+        return result
 
     if actor.actor_type == "agent":
         await _apply_non_lead_agent_task_rules(session, update=update)
     else:
         await _apply_admin_task_rules(session, update=update)
-    return await _finalize_updated_task(
-        session,
-        update=update,
-    )
+    result = await _finalize_updated_task(session, update=update)
+    if update.status_requested:
+        await _fire_uipath_sync(session, board_id=board_id, task=task)
+    return result
 
 
 async def delete_task_and_related_records(

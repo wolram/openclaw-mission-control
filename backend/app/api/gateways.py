@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import col
 
 from app.api.deps import require_org_admin
@@ -14,7 +15,7 @@ from app.db import crud
 from app.db.pagination import paginate
 from app.db.session import get_session
 from app.models.agents import Agent
-from app.models.gateways import Gateway
+from app.models.gateways import GATEWAY_TYPE_UIPATH, Gateway
 from app.models.skills import GatewayInstalledSkill
 from app.schemas.common import OkResponse
 from app.schemas.gateways import (
@@ -26,6 +27,8 @@ from app.schemas.gateways import (
 from app.schemas.pagination import DefaultLimitOffsetPage
 from app.services.openclaw.admin_service import GatewayAdminLifecycleService
 from app.services.openclaw.session_service import GatewayTemplateSyncQuery
+from app.services.uipath.orchestrator_client import register_webhook
+from app.services.uipath.sync_service import uipath_config_from_gateway
 
 if TYPE_CHECKING:
     from fastapi_pagination.limit_offset import LimitOffsetPage
@@ -96,18 +99,21 @@ async def create_gateway(
 ) -> Gateway:
     """Create a gateway and provision or refresh its main agent."""
     service = GatewayAdminLifecycleService(session)
-    await service.assert_gateway_runtime_compatible(
-        url=payload.url,
-        token=payload.token,
-        allow_insecure_tls=payload.allow_insecure_tls,
-        disable_device_pairing=payload.disable_device_pairing,
-    )
+    is_uipath = payload.gateway_type == GATEWAY_TYPE_UIPATH
+    if not is_uipath:
+        await service.assert_gateway_runtime_compatible(
+            url=payload.url,
+            token=payload.token,
+            allow_insecure_tls=payload.allow_insecure_tls,
+            disable_device_pairing=payload.disable_device_pairing,
+        )
     data = payload.model_dump()
     gateway_id = uuid4()
     data["id"] = gateway_id
     data["organization_id"] = ctx.organization.id
     gateway = await crud.create(session, Gateway, **data)
-    await service.ensure_main_agent(gateway, auth, action="provision")
+    if not is_uipath:
+        await service.ensure_main_agent(gateway, auth, action="provision")
     return gateway
 
 
@@ -141,7 +147,9 @@ async def update_gateway(
         organization_id=ctx.organization.id,
     )
     updates = payload.model_dump(exclude_unset=True)
-    if (
+    effective_type = updates.get("gateway_type", gateway.gateway_type)
+    is_uipath = effective_type == GATEWAY_TYPE_UIPATH
+    if not is_uipath and (
         "url" in updates
         or "token" in updates
         or "allow_insecure_tls" in updates
@@ -164,7 +172,8 @@ async def update_gateway(
                 disable_device_pairing=next_disable_device_pairing,
             )
     await crud.patch(session, gateway, updates)
-    await service.ensure_main_agent(gateway, auth, action="update")
+    if not is_uipath:
+        await service.ensure_main_agent(gateway, auth, action="update")
     return gateway
 
 
@@ -183,6 +192,47 @@ async def sync_gateway_templates(
         organization_id=ctx.organization.id,
     )
     return await service.sync_templates(gateway, query=sync_query, auth=auth)
+
+
+@router.post("/{gateway_id}/uipath/setup-webhook", response_model=OkResponse)
+async def setup_uipath_webhook(
+    gateway_id: UUID,
+    request: Request,
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> OkResponse:
+    """Register a UiPath Orchestrator webhook that notifies this gateway's receiver.
+
+    Generates a random secret, stores it on the gateway, then calls the UiPath
+    Orchestrator API to register the webhook subscription.  After this succeeds,
+    UiPath will POST job events to::
+
+        POST /api/v1/webhooks/uipath/{gateway_id}
+    """
+    service = GatewayAdminLifecycleService(session)
+    gateway = await service.require_gateway(
+        gateway_id=gateway_id,
+        organization_id=ctx.organization.id,
+    )
+
+    config = uipath_config_from_gateway(gateway)
+    if config is None:
+        from fastapi import HTTPException, status as http_status
+
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Gateway is not a UiPath gateway or is missing required UiPath credentials."
+            ),
+        )
+
+    webhook_secret = secrets.token_hex(32)
+    base_url = str(request.base_url).rstrip("/")
+    callback_url = f"{base_url}/api/v1/webhooks/uipath/{gateway_id}"
+
+    await register_webhook(config, callback_url=callback_url, secret=webhook_secret)
+    await crud.patch(session, gateway, {"uipath_webhook_secret": webhook_secret})
+    return OkResponse()
 
 
 @router.delete("/{gateway_id}", response_model=OkResponse)

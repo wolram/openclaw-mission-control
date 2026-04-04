@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend (Next.js)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "-f", "../compose.yml", "--env-file", "../.env", "up", "frontend", "--build"],
+      "port": 3000
+    },
+    {
+      "name": "Backend (FastAPI)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "-f", "../compose.yml", "--env-file", "../.env", "up", "backend", "--build"],
+      "port": 8000
+    }
+  ]
+}

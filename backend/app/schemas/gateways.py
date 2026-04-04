@@ -8,6 +8,8 @@ from uuid import UUID
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
+from app.models.gateways import GATEWAY_TYPE_OPENCLAW
+
 RUNTIME_ANNOTATION_TYPES = (datetime, UUID)
 
 
@@ -21,7 +23,20 @@ class GatewayBase(SQLModel):
     disable_device_pairing: bool = False
 
 
-class GatewayCreate(GatewayBase):
+class UiPathFields(SQLModel):
+    """UiPath Orchestrator credential fields shared by create/read/update schemas."""
+
+    gateway_type: str = GATEWAY_TYPE_OPENCLAW
+    uipath_org_name: str | None = None
+    uipath_tenant_name: str | None = None
+    uipath_client_id: str | None = None
+    uipath_client_secret: str | None = None
+    uipath_folder_name: str | None = None
+    uipath_process_key: str | None = None
+    uipath_webhook_secret: str | None = None
+
+
+class GatewayCreate(GatewayBase, UiPathFields):
     """Payload for creating a gateway configuration."""
 
     token: str | None = None
@@ -38,7 +53,7 @@ class GatewayCreate(GatewayBase):
         return value
 
 
-class GatewayUpdate(SQLModel):
+class GatewayUpdate(UiPathFields):
     """Payload for partial gateway updates."""
 
     name: str | None = None
@@ -47,6 +62,7 @@ class GatewayUpdate(SQLModel):
     workspace_root: str | None = None
     allow_insecure_tls: bool | None = None
     disable_device_pairing: bool | None = None
+    gateway_type: str | None = None  # type: ignore[assignment]
 
     @field_validator("token", mode="before")
     @classmethod
@@ -60,7 +76,7 @@ class GatewayUpdate(SQLModel):
         return value
 
 
-class GatewayRead(GatewayBase):
+class GatewayRead(GatewayBase, UiPathFields):
     """Gateway payload returned from read endpoints."""
 
     id: UUID

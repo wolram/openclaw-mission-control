@@ -12,7 +12,7 @@ import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout"
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
-import { ApiError } from "@/api/mutator";
+import { ApiError, customFetch } from "@/api/mutator";
 import {
   type listBoardsApiV1BoardsGetResponse,
   useListBoardsApiV1BoardsGet,
@@ -23,6 +23,7 @@ import {
   useGatewaysStatusApiV1GatewaysStatusGet,
   useGetGatewayApiV1GatewaysGatewayIdGet,
 } from "@/api/generated/gateways/gateways";
+import { GATEWAY_TYPE_UIPATH } from "@/components/gateways/GatewayForm";
 import {
   type listAgentsApiV1AgentsGetResponse,
   getListAgentsApiV1AgentsGetQueryKey,
@@ -52,6 +53,28 @@ export default function GatewayDetailPage() {
 
   const { isAdmin } = useOrganizationMembership(isSignedIn);
   const [deleteTarget, setDeleteTarget] = useState<AgentRead | null>(null);
+  const [webhookSetupMessage, setWebhookSetupMessage] = useState<string | null>(null);
+  const [webhookSetupError, setWebhookSetupError] = useState<string | null>(null);
+  const [isSettingUpWebhook, setIsSettingUpWebhook] = useState(false);
+
+  const handleSetupWebhook = async () => {
+    if (!gatewayId) return;
+    setIsSettingUpWebhook(true);
+    setWebhookSetupMessage(null);
+    setWebhookSetupError(null);
+    try {
+      await customFetch(`/api/v1/gateways/${gatewayId}/uipath/setup-webhook`, {
+        method: "POST",
+      });
+      setWebhookSetupMessage("Webhook registered in UiPath Orchestrator.");
+    } catch (err) {
+      setWebhookSetupError(
+        err instanceof Error ? err.message : "Failed to register webhook.",
+      );
+    } finally {
+      setIsSettingUpWebhook(false);
+    }
+  };
   const agentsKey = getListAgentsApiV1AgentsGetQueryKey(
     gatewayId ? { gateway_id: gatewayId } : undefined,
   );
@@ -194,6 +217,76 @@ export default function GatewayDetailPage() {
           </div>
         ) : gateway ? (
           <div className="space-y-6">
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {(gateway as any).gateway_type === GATEWAY_TYPE_UIPATH ? (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    UiPath Orchestrator
+                  </p>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(() => { const g = gateway as any; return (
+                  <div className="mt-4 space-y-3 text-sm text-slate-700">
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Organization</p>
+                      <p className="mt-1 font-medium text-slate-900">{g.uipath_org_name || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Tenant</p>
+                      <p className="mt-1 font-medium text-slate-900">{g.uipath_tenant_name || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Folder</p>
+                      <p className="mt-1 font-medium text-slate-900">{g.uipath_folder_name || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Process key</p>
+                      <p className="mt-1 font-medium text-slate-900">{g.uipath_process_key || "—"}</p>
+                    </div>
+                  </div>
+                  ); })()}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Webhook sync
+                  </p>
+                  <p className="mt-3 text-sm text-slate-600">
+                    Register a webhook in UiPath Orchestrator so that job status changes
+                    are automatically reflected in OpenClaw tasks.
+                  </p>
+                  {webhookSetupMessage ? (
+                    <p className="mt-3 text-sm text-emerald-600">{webhookSetupMessage}</p>
+                  ) : null}
+                  {webhookSetupError ? (
+                    <p className="mt-3 text-sm text-red-600">{webhookSetupError}</p>
+                  ) : null}
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      disabled={isSettingUpWebhook}
+                      onClick={handleSetupWebhook}
+                    >
+                      {isSettingUpWebhook ? "Registering…" : "Setup webhook"}
+                    </Button>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Created</p>
+                      <p className="mt-1 text-sm font-medium text-slate-900">
+                        {formatTimestamp(gateway.created_at)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-slate-400">Updated</p>
+                      <p className="mt-1 text-sm font-medium text-slate-900">
+                        {formatTimestamp(gateway.updated_at)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -279,6 +372,7 @@ export default function GatewayDetailPage() {
                 </div>
               </div>
             </div>
+            )}
 
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">

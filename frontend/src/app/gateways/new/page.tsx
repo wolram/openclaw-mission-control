@@ -10,7 +10,11 @@ import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
 import { useCreateGatewayApiV1GatewaysPost } from "@/api/generated/gateways/gateways";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
-import { GatewayForm } from "@/components/gateways/GatewayForm";
+import {
+  GATEWAY_TYPE_OPENCLAW,
+  GATEWAY_TYPE_UIPATH,
+  GatewayForm,
+} from "@/components/gateways/GatewayForm";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import {
   DEFAULT_WORKSPACE_ROOT,
@@ -26,11 +30,20 @@ export default function NewGatewayPage() {
   const { isAdmin } = useOrganizationMembership(isSignedIn);
 
   const [name, setName] = useState("");
+  const [gatewayType, setGatewayType] = useState(GATEWAY_TYPE_OPENCLAW);
   const [gatewayUrl, setGatewayUrl] = useState("");
   const [gatewayToken, setGatewayToken] = useState("");
   const [disableDevicePairing, setDisableDevicePairing] = useState(false);
   const [workspaceRoot, setWorkspaceRoot] = useState(DEFAULT_WORKSPACE_ROOT);
   const [allowInsecureTls, setAllowInsecureTls] = useState(false);
+
+  // UiPath fields
+  const [uipathOrgName, setUipathOrgName] = useState("");
+  const [uipathTenantName, setUipathTenantName] = useState("");
+  const [uipathClientId, setUipathClientId] = useState("");
+  const [uipathClientSecret, setUipathClientSecret] = useState("");
+  const [uipathFolderName, setUipathFolderName] = useState("");
+  const [uipathProcessKey, setUipathProcessKey] = useState("");
 
   const [gatewayUrlError, setGatewayUrlError] = useState<string | null>(null);
   const [gatewayCheckStatus, setGatewayCheckStatus] =
@@ -54,13 +67,21 @@ export default function NewGatewayPage() {
     },
   });
 
+  const isUiPath = gatewayType === GATEWAY_TYPE_UIPATH;
   const isLoading =
     createMutation.isPending || gatewayCheckStatus === "checking";
 
-  const canSubmit =
-    Boolean(name.trim()) &&
-    Boolean(gatewayUrl.trim()) &&
-    Boolean(workspaceRoot.trim());
+  const canSubmit = isUiPath
+    ? Boolean(name.trim()) &&
+      Boolean(uipathOrgName.trim()) &&
+      Boolean(uipathTenantName.trim()) &&
+      Boolean(uipathClientId.trim()) &&
+      Boolean(uipathClientSecret.trim()) &&
+      Boolean(uipathFolderName.trim()) &&
+      Boolean(uipathProcessKey.trim())
+    : Boolean(name.trim()) &&
+      Boolean(gatewayUrl.trim()) &&
+      Boolean(workspaceRoot.trim());
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,6 +91,27 @@ export default function NewGatewayPage() {
       setError("Gateway name is required.");
       return;
     }
+
+    if (isUiPath) {
+      setError(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createMutation.mutate({
+        data: {
+          name: name.trim(),
+          url: "",
+          workspace_root: "",
+          gateway_type: GATEWAY_TYPE_UIPATH,
+          uipath_org_name: uipathOrgName.trim(),
+          uipath_tenant_name: uipathTenantName.trim(),
+          uipath_client_id: uipathClientId.trim(),
+          uipath_client_secret: uipathClientSecret.trim(),
+          uipath_folder_name: uipathFolderName.trim(),
+          uipath_process_key: uipathProcessKey.trim(),
+        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      });
+      return;
+    }
+
     const gatewayValidation = validateGatewayUrl(gatewayUrl);
     setGatewayUrlError(gatewayValidation);
     if (gatewayValidation) {
@@ -116,12 +158,13 @@ export default function NewGatewayPage() {
         forceRedirectUrl: "/gateways/new",
       }}
       title="Create gateway"
-      description="Configure an OpenClaw gateway for mission control."
+      description="Configure an OpenClaw or UiPath Orchestrator gateway."
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can create gateways."
     >
       <GatewayForm
         name={name}
+        gatewayType={gatewayType}
         gatewayUrl={gatewayUrl}
         gatewayToken={gatewayToken}
         disableDevicePairing={disableDevicePairing}
@@ -137,9 +180,22 @@ export default function NewGatewayPage() {
         cancelLabel="Cancel"
         submitLabel="Create gateway"
         submitBusyLabel="Creating…"
+        uipathOrgName={uipathOrgName}
+        uipathTenantName={uipathTenantName}
+        uipathClientId={uipathClientId}
+        uipathClientSecret={uipathClientSecret}
+        uipathFolderName={uipathFolderName}
+        uipathProcessKey={uipathProcessKey}
         onSubmit={handleSubmit}
         onCancel={() => router.push("/gateways")}
         onNameChange={setName}
+        onGatewayTypeChange={(next) => {
+          setGatewayType(next);
+          setGatewayUrlError(null);
+          setGatewayCheckStatus("idle");
+          setGatewayCheckMessage(null);
+          setError(null);
+        }}
         onGatewayUrlChange={(next) => {
           setGatewayUrl(next);
           setGatewayUrlError(null);
@@ -162,6 +218,12 @@ export default function NewGatewayPage() {
           setGatewayCheckStatus("idle");
           setGatewayCheckMessage(null);
         }}
+        onUipathOrgNameChange={setUipathOrgName}
+        onUipathTenantNameChange={setUipathTenantName}
+        onUipathClientIdChange={setUipathClientId}
+        onUipathClientSecretChange={setUipathClientSecret}
+        onUipathFolderNameChange={setUipathFolderName}
+        onUipathProcessKeyChange={setUipathProcessKey}
       />
     </DashboardPageLayout>
   );
